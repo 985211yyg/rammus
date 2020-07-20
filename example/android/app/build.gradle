@@ -24,9 +24,7 @@ if (flutterVersionName == null) {
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
-def keystorePropertiesFile = rootProject.file("key.properties")
-def keystoreProperties = new Properties()
-keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+
 
 android {
     compileSdkVersion 28
@@ -48,14 +46,6 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        debug {
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-        }
-    }
 
     buildTypes {
         debug {
@@ -75,7 +65,5 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'com.aliyun.ams:huawei-push:2.6.3.305'
     implementation 'com.aliyun.ams:huawei-push-base:2.6.3.305'
-    implementation 'com.google.firebase:firebase-messaging:17.6.0'
-    implementation 'com.aliyun.ams:meizu-push:3.8.7.1'
     implementation 'com.aliyun.ams:third_vivopush:2.9.0.1'
 }
