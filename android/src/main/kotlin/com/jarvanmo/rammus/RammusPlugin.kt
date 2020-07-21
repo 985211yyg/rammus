@@ -1,17 +1,21 @@
 package com.jarvanmo.rammus
 
-import android.app.Application
-import android.app.NotificationChannel
-import android.app.NotificationManager
+import android.app.*
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationCompat.BadgeIconType
 import com.alibaba.sdk.android.push.CommonCallback
 import com.alibaba.sdk.android.push.huawei.HuaWeiRegister
 import com.alibaba.sdk.android.push.noonesdk.PushServiceFactory
 import com.alibaba.sdk.android.push.register.*
+import com.blankj.utilcode.util.ActivityUtils
+import com.blankj.utilcode.util.NotificationUtils
+import com.blankj.utilcode.util.Utils
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -23,11 +27,12 @@ import io.flutter.plugin.common.PluginRegistry.Registrar
 
 
 class RammusPlugin() : MethodCallHandler, FlutterPlugin, ActivityAware {
-    lateinit var applicationContext: Context
+    lateinit var applicationContext: Context;
+    lateinit var activity: Activity
 
     companion object {
         private const val TAG = "RammusPlugin"
-        private val inHandler = Handler()
+        private val handler = Handler()
 
         @JvmStatic
         fun registerWith(registrar: Registrar) {
@@ -36,61 +41,76 @@ class RammusPlugin() : MethodCallHandler, FlutterPlugin, ActivityAware {
             channel.setMethodCallHandler(RammusPlugin())
         }
 
+        @JvmStatic
+        fun initPushService(applicationContext: Application) {
+            RammusPlugin().applicationContext = applicationContext
+            PushServiceFactory.init(applicationContext)
+            PushServiceFactory.getCloudPushService().register(applicationContext, object : CommonCallback {
+                override fun onSuccess(response: String?) {
+                    handler.postDelayed({
+                        RammusPushHandler.methodChannel?.invokeMethod("initCloudChannelResult", mapOf(
+                                "isSuccessful" to true,
+                                "response" to response
+                        ))
+                    }, 2000)
+
+                }
+
+                override fun onFailed(errorCode: String?, errorMessage: String?) {
+                    handler.postDelayed({
+                        RammusPushHandler.methodChannel?.invokeMethod("initCloudChannelResult", mapOf(
+                                "isSuccessful" to false,
+                                "errorCode" to errorCode,
+                                "errorMessage" to errorMessage
+                        ))
+                    }, 2000)
+
+                }
+            })
+            PushServiceFactory.getCloudPushService().setPushIntentService(RammusPushIntentService::class.java)
+            val appInfo = applicationContext.packageManager
+                    .getApplicationInfo(applicationContext.packageName, PackageManager.GET_META_DATA)
+            val xiaomiAppId = appInfo.metaData.getString("com.xiaomi.push.client.app_id")
+            val xiaomiAppKey = appInfo.metaData.getString("com.xiaomi.push.client.app_key")
+            if ((xiaomiAppId != null && xiaomiAppId.isNotBlank())
+                    && (xiaomiAppKey != null && xiaomiAppKey.isNotBlank())) {
+                Log.d(TAG, "正在注册小米推送服务...")
+                MiPushRegister.register(applicationContext, xiaomiAppId, xiaomiAppKey)
+            }
+            val huaweiAppId = appInfo.metaData.getString("com.huawei.hms.client.appid")
+            if (huaweiAppId != null && huaweiAppId.toString().isNotBlank()) {
+                Log.d(TAG, "正在注册华为推送服务...")
+                HuaWeiRegister.register(applicationContext as Application?)
+            }
+            val oppoAppKey = appInfo.metaData.getString("com.oppo.push.client.app_key")
+            val oppoAppSecret = appInfo.metaData.getString("com.oppo.push.client.app_secret")
+            if ((oppoAppKey != null && oppoAppKey.isNotBlank())
+                    && (oppoAppSecret != null && oppoAppSecret.isNotBlank())) {
+                Log.d(TAG, "正在注册Oppo推送服务...")
+                OppoRegister.register(applicationContext, oppoAppKey, oppoAppSecret)
+            }
+            val vivoAppId = appInfo.metaData.getString("com.vivo.push.app_id")
+            val vivoApiKey = appInfo.metaData.getString("com.vivo.push.api_key")
+            if ((vivoAppId != null && vivoAppId.isNotBlank())
+                    && (vivoApiKey != null && vivoApiKey.isNotBlank())) {
+                Log.d(TAG, "正在注册Vivo推送服务...")
+                VivoRegister.register(applicationContext)
+            }
+
+        }
+
+
     }
 
-    private fun initPushService() {
-        PushServiceFactory.init(applicationContext)
-        val pushService = PushServiceFactory.getCloudPushService()
-        pushService.register(applicationContext, object : CommonCallback {
-            override fun onSuccess(response: String?) {
-                inHandler.postDelayed({
-                    RammusPushHandler.methodChannel?.invokeMethod("initCloudChannelResult", mapOf(
-                            "isSuccessful" to true,
-                            "response" to response
-                    ))
-                }, 2000)
-            }
 
-            override fun onFailed(errorCode: String?, errorMessage: String?) {
-                inHandler.postDelayed({
-                    RammusPushHandler.methodChannel?.invokeMethod("initCloudChannelResult", mapOf(
-                            "isSuccessful" to false,
-                            "errorCode" to errorCode,
-                            "errorMessage" to errorMessage
-                    ))
-                }, 2000)
-            }
-        })
-        pushService.setPushIntentService(RammusPushIntentService::class.java)
-        val appInfo = applicationContext.packageManager
-                .getApplicationInfo(applicationContext.packageName, PackageManager.GET_META_DATA)
-        val xiaomiAppId = appInfo.metaData.getString("com.xiaomi.push.client.app_id")
-        val xiaomiAppKey = appInfo.metaData.getString("com.xiaomi.push.client.app_key")
-        if ((xiaomiAppId != null && xiaomiAppId.isNotBlank())
-                && (xiaomiAppKey != null && xiaomiAppKey.isNotBlank())) {
-            Log.d(TAG, "正在注册小米推送服务...")
-            MiPushRegister.register(applicationContext, xiaomiAppId, xiaomiAppKey)
-        }
-        val huaweiAppId = appInfo.metaData.getString("com.huawei.hms.client.appid")
-        if (huaweiAppId != null && huaweiAppId.toString().isNotBlank()) {
-            Log.d(TAG, "正在注册华为推送服务...")
-            HuaWeiRegister.register(applicationContext as Application?)
-        }
-        val oppoAppKey = appInfo.metaData.getString("com.oppo.push.client.app_key")
-        val oppoAppSecret = appInfo.metaData.getString("com.oppo.push.client.app_secret")
-        if ((oppoAppKey != null && oppoAppKey.isNotBlank())
-                && (oppoAppSecret != null && oppoAppSecret.isNotBlank())) {
-            Log.d(TAG, "正在注册Oppo推送服务...")
-            OppoRegister.register(applicationContext, oppoAppKey, oppoAppSecret)
-        }
-        val vivoAppId = appInfo.metaData.getString("com.vivo.push.app_id")
-        val vivoApiKey = appInfo.metaData.getString("com.vivo.push.api_key")
-        if ((vivoAppId != null && vivoAppId.isNotBlank())
-                && (vivoApiKey != null && vivoApiKey.isNotBlank())) {
-            Log.d(TAG, "正在注册Vivo推送服务...")
-            VivoRegister.register(applicationContext)
-        }
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        val channel = MethodChannel(binding.binaryMessenger, "com.jarvanmo/rammus")
+        RammusPushHandler.methodChannel = channel
+        channel.setMethodCallHandler(this)
+    }
 
+
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     }
 
 
@@ -225,8 +245,6 @@ class RammusPlugin() : MethodCallHandler, FlutterPlugin, ActivityAware {
         })
     }
 
-    //bindPhoneNumber
-
 
     private fun bindPhoneNumber(call: MethodCall, result: Result) {
         val pushService = PushServiceFactory.getCloudPushService()
@@ -273,7 +291,6 @@ class RammusPlugin() : MethodCallHandler, FlutterPlugin, ActivityAware {
 
 
     private fun bindTag(call: MethodCall, result: Result) {
-//        target: Int, tags: Array<String>, alias: String, callback: CommonCallback
         val target = call.argument("target") ?: 1
         val tagsInArrayList = call.argument("tags") ?: arrayListOf<String>()
         val alias = call.argument<String?>("alias")
@@ -283,6 +300,7 @@ class RammusPlugin() : MethodCallHandler, FlutterPlugin, ActivityAware {
 
         val pushService = PushServiceFactory.getCloudPushService()
 
+        //绑定标签
         pushService.bindTag(target, tags, alias, object : CommonCallback {
             override fun onSuccess(response: String?) {
                 result.success(mapOf(
@@ -300,11 +318,12 @@ class RammusPlugin() : MethodCallHandler, FlutterPlugin, ActivityAware {
                 ))
             }
         })
+
+
     }
 
 
     private fun unbindTag(call: MethodCall, result: Result) {
-//        target: Int, tags: Array<String>, alias: String, callback: CommonCallback
         val target = call.argument("target") ?: 1
         val tagsInArrayList = call.argument("tags") ?: arrayListOf<String>()
         val alias = call.argument<String?>("alias")
@@ -424,41 +443,23 @@ class RammusPlugin() : MethodCallHandler, FlutterPlugin, ActivityAware {
 
     private fun setupNotificationManager(call: MethodCall, result: Result) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channels = call.arguments as List<Map<String, Any?>>
-            val mNotificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val notificationChannels = mutableListOf<NotificationChannel>()
-            for (channel in channels) {
-                // 通知渠道的id
-                val id = channel["id"] ?: applicationContext.packageName
-                // 用户可以看到的通知渠道的名字.
-                val name = channel["name"] ?: applicationContext.packageName
-                // 用户可以看到的通知渠道的描述
-                val description = channel["description"] ?: applicationContext.packageName
-                val importance = channel["importance"] ?: NotificationManager.IMPORTANCE_DEFAULT
-                val mChannel = NotificationChannel(id as String, name as String, importance as Int)
-                // 配置通知渠道的属性
-                mChannel.description = description as String
-                mChannel.enableLights(true)
-                mChannel.enableVibration(true)
-                notificationChannels.add(mChannel)
-            }
-            if (notificationChannels.isNotEmpty()) {
-                mNotificationManager.createNotificationChannels(notificationChannels)
+            val notifications = call.arguments as List<Map<String, Any?>>
+            val data = notifications[0]
+            val channelConfig = NotificationUtils.ChannelConfig(data["id"].toString(),
+                    data["name"].toString(), data["importance"] as Int)
+            channelConfig.setDescription(data["description"].toString())
+            channelConfig.setShowBadge(true)
+            NotificationUtils.notify(123, channelConfig) {
+                it.setSmallIcon(android.R.drawable.stat_notify_chat)
+                        .setContentTitle(data["name"].toString())
+                        .setContentText(data["description"].toString())
+                        .setContentIntent(PendingIntent.getActivity(Utils.getApp(),
+                                1111,
+                                Intent(activity, activity.javaClass), 0))
+                        .setAutoCancel(true)
             }
         }
         result.success(true)
-    }
-
-    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        applicationContext = binding.applicationContext
-        val channel = MethodChannel(binding.binaryMessenger, "com.jarvanmo/rammus")
-        RammusPushHandler.methodChannel = channel
-        channel.setMethodCallHandler(this)
-        initPushService()
-    }
-
-
-    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     }
 
 
@@ -471,9 +472,13 @@ class RammusPlugin() : MethodCallHandler, FlutterPlugin, ActivityAware {
 
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activity = binding.activity
+
     }
 
 
     override fun onDetachedFromActivityForConfigChanges() {
     }
+
+
 }

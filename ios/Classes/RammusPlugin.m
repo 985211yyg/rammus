@@ -444,10 +444,8 @@ UNNotificationPresentationOptions _notificationPresentationOption = UNNotificati
 
 
 - (void)bindTag:(FlutterMethodCall *)call result:(FlutterResult)result {
-
-//    (title == (id) [NSNull null]) ? nil : title
     NSNumber *target = (call.arguments[@"target"] == (id) [NSNull null]) ? @1 : call.arguments[@"target"];
-    NSString *alias = (call.arguments[@"alias"] == (id) [NSNull null]) ? nil : call.arguments[@"alias"];
+    NSString *alias = (call.arguments[@"alias"] == (id) [NSNull null]) ? nil : call.arguments[@"alias"];    
     [CloudPushSDK bindTag:target.intValue withTags:call.arguments[@"tags"] withAlias:alias withCallback:^(CloudPushCallbackResult *res) {
         if (res.success) {
             if (res.data == nil) {
